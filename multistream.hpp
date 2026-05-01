@@ -59,6 +59,11 @@ private:
 	static void stream_output_stop(void *data, calldata_t *calldata);
 	static void stream_output_start(void *data, calldata_t *calldata);
 
+	static void websocket_list_outputs(obs_data_t *request_data, obs_data_t *response_data, void *priv_data);
+	static void websocket_start_output(obs_data_t *request_data, obs_data_t *response_data, void *priv_data);
+	static void websocket_stop_output(obs_data_t *request_data, obs_data_t *response_data, void *priv_data);
+	static void websocket_toggle_output(obs_data_t *request_data, obs_data_t *response_data, void *priv_data);
+
 private slots:
 	void ApiInfo(QString info);
 
@@ -66,6 +71,8 @@ public:
 	MultistreamDock(QWidget *parent = nullptr);
 	~MultistreamDock();
 	void LoadVerticalOutputs(bool firstLoad = true);
+
+	friend void RegisterMultistreamWebSocketVendor(MultistreamDock *dock);
 };
 
 class AspectRatioPixmapLabel : public QLabel {
