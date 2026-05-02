@@ -46,6 +46,7 @@ private:
 	void SaveSettings();
 
 	bool StartOutput(obs_data_t *settings, QPushButton *streamButton);
+	bool StartOutputInternal(obs_data_t *settings, QPushButton *streamButton);
 
 	void outputButtonStyle(QPushButton *button);
 
@@ -66,6 +67,9 @@ public:
 	MultistreamDock(QWidget *parent = nullptr);
 	~MultistreamDock();
 	void LoadVerticalOutputs(bool firstLoad = true);
+	void WebsocketGetOutputList(obs_data_t *response_data);
+	bool WebsocketStartOutput(const char *name);
+	bool WebsocketStopOutput(const char *name);
 };
 
 class AspectRatioPixmapLabel : public QLabel {

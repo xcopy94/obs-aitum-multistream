@@ -65,7 +65,8 @@ target_sources(${PROJECT_NAME} PRIVATE
 	output-dialog.hpp
 	stream-key-input.hpp
     multistream.hpp
-	file-updater.h)
+	file-updater.h
+	obs-websocket-api.h)
 
 if(BUILD_OUT_OF_TREE)
 	set_target_properties_plugin(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
