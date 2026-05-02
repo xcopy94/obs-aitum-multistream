@@ -46,6 +46,18 @@ if(BUILD_OUT_OF_TREE)
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE CURL::libcurl)
 
+include(FetchContent)
+FetchContent_Declare(
+  obs-websocket-api
+  GIT_REPOSITORY https://github.com/obsproject/obs-websocket.git
+  GIT_TAG 5.7.3
+  GIT_SHALLOW TRUE)
+FetchContent_GetProperties(obs-websocket-api)
+if(NOT obs-websocket-api_POPULATED)
+  FetchContent_Populate(obs-websocket-api)
+endif()
+target_include_directories(${PROJECT_NAME} PRIVATE "${obs-websocket-api_SOURCE_DIR}/lib")
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/version.h)
 
 if(OS_WINDOWS)
@@ -65,8 +77,7 @@ target_sources(${PROJECT_NAME} PRIVATE
 	output-dialog.hpp
 	stream-key-input.hpp
     multistream.hpp
-	file-updater.h
-	obs-websocket-api.h)
+	file-updater.h)
 
 if(BUILD_OUT_OF_TREE)
 	set_target_properties_plugin(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
