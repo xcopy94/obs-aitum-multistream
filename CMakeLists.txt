@@ -48,18 +48,22 @@ target_link_libraries(${PROJECT_NAME} PRIVATE CURL::libcurl)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/version.h)
 
-include(FetchContent)
-FetchContent_Declare(
-  obs-websocket
-  GIT_REPOSITORY https://github.com/obsproject/obs-websocket.git
-  GIT_TAG 5.5.4
-  GIT_SHALLOW TRUE
-)
-FetchContent_GetProperties(obs-websocket)
-if(NOT obs-websocket_POPULATED)
-  FetchContent_Populate(obs-websocket)
+# obs-websocket is bundled with OBS Studio (plugins/obs-websocket).
+# In-tree builds can link against the interface target it defines.
+# Out-of-tree builds find the installed header alongside the other OBS headers.
+if(BUILD_OUT_OF_TREE)
+  find_path(
+    OBS_WEBSOCKET_API_INCLUDE_DIR
+    NAMES obs-websocket-api.h
+    PATH_SUFFIXES obs)
+  if(NOT OBS_WEBSOCKET_API_INCLUDE_DIR)
+    message(FATAL_ERROR "obs-websocket-api.h not found. "
+                        "Install OBS Studio development headers.")
+  endif()
+  target_include_directories(${PROJECT_NAME} PRIVATE "${OBS_WEBSOCKET_API_INCLUDE_DIR}")
+else()
+  target_link_libraries(${PROJECT_NAME} PRIVATE OBS::websocket-api)
 endif()
-target_include_directories(${PROJECT_NAME} PRIVATE "${obs-websocket_SOURCE_DIR}/lib")
 
 if(OS_WINDOWS)
   configure_file(cmake/windows/resources/installer-Windows.iss.in "${CMAKE_CURRENT_BINARY_DIR}/installer-Windows.generated.iss")
