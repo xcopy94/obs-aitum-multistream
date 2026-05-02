@@ -48,6 +48,19 @@ target_link_libraries(${PROJECT_NAME} PRIVATE CURL::libcurl)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/version.h)
 
+include(FetchContent)
+FetchContent_Declare(
+  obs-websocket
+  GIT_REPOSITORY https://github.com/obsproject/obs-websocket.git
+  GIT_TAG 5.5.4
+  GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(obs-websocket)
+if(NOT obs-websocket_POPULATED)
+  FetchContent_Populate(obs-websocket)
+endif()
+target_include_directories(${PROJECT_NAME} PRIVATE "${obs-websocket_SOURCE_DIR}/lib")
+
 if(OS_WINDOWS)
   configure_file(cmake/windows/resources/installer-Windows.iss.in "${CMAKE_CURRENT_BINARY_DIR}/installer-Windows.generated.iss")
 endif()

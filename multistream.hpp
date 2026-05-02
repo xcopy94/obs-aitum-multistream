@@ -69,6 +69,10 @@ public:
 	~MultistreamDock();
 	void LoadVerticalOutputs(bool firstLoad = true);
 
+	obs_data_t *GetOutputList();
+	bool StartOutputByName(const char *name);
+	bool StopOutputByName(const char *name);
+
 signals:
 	void requestingStart(bool pending);
 	void requestingStop(bool pending);

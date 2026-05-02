@@ -1,6 +1,7 @@
 #include "config-utils.hpp"
 #include "multistream.hpp"
 #include "obs-module.h"
+#include "obs-websocket-api.h"
 #include "version.h"
 #include <obs-frontend-api.h>
 #include <QDesktopServices>
@@ -58,6 +59,63 @@ void obs_module_post_load()
 {
 	if (multistream_dock)
 		multistream_dock->LoadVerticalOutputs(true);
+
+	auto vendor = obs_websocket_register_vendor("aitum-multistream");
+	if (!vendor)
+		return;
+
+	obs_websocket_vendor_register_request(
+		vendor, "get_output_list",
+		[](obs_data_t *, obs_data_t *response_data, void *) {
+			auto dock = multistream_dock;
+			if (!dock)
+				return;
+			obs_data_t *result = nullptr;
+			QMetaObject::invokeMethod(
+				dock, [dock, &result]() { result = dock->GetOutputList(); },
+				Qt::BlockingQueuedConnection);
+			if (result) {
+				auto arr = obs_data_get_array(result, "outputs");
+				obs_data_set_array(response_data, "outputs", arr);
+				obs_data_array_release(arr);
+				obs_data_release(result);
+			}
+		},
+		nullptr);
+
+	obs_websocket_vendor_register_request(
+		vendor, "start_output",
+		[](obs_data_t *request_data, obs_data_t *response_data, void *) {
+			auto dock = multistream_dock;
+			if (!dock) {
+				obs_data_set_bool(response_data, "success", false);
+				return;
+			}
+			std::string name = obs_data_get_string(request_data, "outputName");
+			bool success = false;
+			QMetaObject::invokeMethod(
+				dock, [dock, name, &success]() { success = dock->StartOutputByName(name.c_str()); },
+				Qt::BlockingQueuedConnection);
+			obs_data_set_bool(response_data, "success", success);
+		},
+		nullptr);
+
+	obs_websocket_vendor_register_request(
+		vendor, "stop_output",
+		[](obs_data_t *request_data, obs_data_t *response_data, void *) {
+			auto dock = multistream_dock;
+			if (!dock) {
+				obs_data_set_bool(response_data, "success", false);
+				return;
+			}
+			std::string name = obs_data_get_string(request_data, "outputName");
+			bool success = false;
+			QMetaObject::invokeMethod(
+				dock, [dock, name, &success]() { success = dock->StopOutputByName(name.c_str()); },
+				Qt::BlockingQueuedConnection);
+			obs_data_set_bool(response_data, "success", success);
+		},
+		nullptr);
 }
 
 void obs_module_unload()
@@ -1193,6 +1251,123 @@ void MultistreamDock::ApiInfo(QString info)
 		obs_data_array_release(blocks);
 	}
 	obs_data_release(data_obj);
+}
+
+obs_data_t *MultistreamDock::GetOutputList()
+{
+	obs_data_t *result = obs_data_create();
+	obs_data_array_t *arr = obs_data_array_create();
+
+	// Built-in stream
+	{
+		obs_data_t *item = obs_data_create();
+		obs_data_set_string(item, "outputName", "builtin");
+		obs_data_set_bool(item, "outputActive", obs_frontend_streaming_active());
+		obs_data_array_push_back(arr, item);
+		obs_data_release(item);
+	}
+
+	// Configured custom outputs
+	if (current_config) {
+		auto outputs_array = obs_data_get_array(current_config, "outputs");
+		size_t count = obs_data_array_count(outputs_array);
+		for (size_t i = 0; i < count; i++) {
+			auto item_data = obs_data_array_item(outputs_array, i);
+			const char *name = obs_data_get_string(item_data, "name");
+			bool active = false;
+			for (auto &t : outputs) {
+				if (std::get<std::string>(t) == name) {
+					active = obs_output_active(std::get<obs_output_t *>(t));
+					break;
+				}
+			}
+			obs_data_t *out_item = obs_data_create();
+			obs_data_set_string(out_item, "outputName", name);
+			obs_data_set_bool(out_item, "outputActive", active);
+			obs_data_array_push_back(arr, out_item);
+			obs_data_release(out_item);
+			obs_data_release(item_data);
+		}
+		obs_data_array_release(outputs_array);
+	}
+
+	obs_data_set_array(result, "outputs", arr);
+	obs_data_array_release(arr);
+	return result;
+}
+
+bool MultistreamDock::StartOutputByName(const char *name)
+{
+	if (!name || !name[0])
+		return false;
+
+	if (strcmp(name, "builtin") == 0) {
+		obs_frontend_streaming_start();
+		return true;
+	}
+
+	if (!current_config)
+		return false;
+
+	// Find the output settings in the current config
+	auto outputs_array = obs_data_get_array(current_config, "outputs");
+	obs_data_t *found_settings = nullptr;
+	size_t count = obs_data_array_count(outputs_array);
+	for (size_t i = 0; i < count; i++) {
+		auto item = obs_data_array_item(outputs_array, i);
+		if (strcmp(obs_data_get_string(item, "name"), name) == 0) {
+			found_settings = item;
+			break;
+		}
+		obs_data_release(item);
+	}
+	obs_data_array_release(outputs_array);
+
+	if (!found_settings)
+		return false;
+
+	// Find the corresponding stream button in the UI layout
+	QPushButton *button = nullptr;
+	for (int i = 1; i < mainCanvasOutputLayout->count(); i++) {
+		auto layout_item = mainCanvasOutputLayout->itemAt(i);
+		if (!layout_item)
+			break;
+		auto widget = layout_item->widget();
+		if (widget && widget->objectName() == QString::fromUtf8(name)) {
+			button = widget->findChild<QPushButton *>(QStringLiteral("canvasStream"));
+			break;
+		}
+	}
+
+	if (!button) {
+		obs_data_release(found_settings);
+		return false;
+	}
+
+	bool result = StartOutput(found_settings, button, true);
+	obs_data_release(found_settings);
+	return result;
+}
+
+bool MultistreamDock::StopOutputByName(const char *name)
+{
+	if (!name || !name[0])
+		return false;
+
+	if (strcmp(name, "builtin") == 0) {
+		obs_frontend_streaming_stop();
+		return true;
+	}
+
+	for (auto it = outputs.begin(); it != outputs.end(); it++) {
+		if (std::get<std::string>(*it) != name)
+			continue;
+		auto output = std::get<obs_output_t *>(*it);
+		obs_queue_task(OBS_TASK_GRAPHICS, [](void *param) { obs_output_stop((obs_output_t *)param); }, output,
+			       false);
+		return true;
+	}
+	return false;
 }
 
 void MultistreamDock::LoadVerticalOutputs(bool firstLoad)
