@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aitum Multistream — WebSocket Test</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      gap: 1.5rem;
+    }
+
+    h1 { font-size: 1.4rem; color: #00d299; letter-spacing: 0.03em; }
+
+    section {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      width: 100%;
+      max-width: 640px;
+    }
+
+    section h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #888;
+      margin-bottom: 0.9rem;
+    }
+
+    .row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 0.6rem;
+    }
+
+    label { font-size: 0.85rem; color: #aaa; white-space: nowrap; }
+
+    input[type="text"], input[type="password"], input[type="number"] {
+      background: #0f3460;
+      border: 1px solid #1a4a8a;
+      border-radius: 4px;
+      color: #e0e0e0;
+      padding: 0.35rem 0.6rem;
+      font-size: 0.85rem;
+      flex: 1;
+      min-width: 80px;
+    }
+
+    input:focus { outline: 2px solid #00d299; }
+
+    button {
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.9rem;
+      transition: opacity 0.15s;
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button:not(:disabled):hover { opacity: 0.85; }
+
+    .btn-primary { background: #00d299; color: #111; font-weight: 600; }
+    .btn-danger  { background: #e05050; color: #fff; }
+    .btn-neutral { background: #2a5298; color: #e0e0e0; }
+
+    #status-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #666;
+      margin-right: 0.4rem;
+      flex-shrink: 0;
+    }
+    #status-dot.connected    { background: #00d299; }
+    #status-dot.disconnected { background: #e05050; }
+    #status-dot.connecting   { background: #f0a500; }
+
+    #status-text { font-size: 0.85rem; }
+
+    /* Output list */
+    #output-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .output-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #0f2040;
+      border-radius: 5px;
+      padding: 0.5rem 0.75rem;
+    }
+
+    .output-name { flex: 1; font-size: 0.9rem; }
+
+    .output-badge {
+      font-size: 0.72rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+    .output-badge.active   { background: #00d299; color: #111; }
+    .output-badge.inactive { background: #444; color: #ccc; }
+
+    #log {
+      background: #0b1525;
+      border: 1px solid #0f3460;
+      border-radius: 5px;
+      padding: 0.6rem 0.8rem;
+      font-size: 0.75rem;
+      font-family: monospace;
+      height: 160px;
+      overflow-y: auto;
+      color: #bbb;
+    }
+
+    #log .ts   { color: #555; }
+    #log .send { color: #7ab8ff; }
+    #log .recv { color: #a8e6b8; }
+    #log .err  { color: #ff8080; }
+    #log .info { color: #f0c060; }
+
+    #refresh-btn { margin-top: 0.75rem; }
+
+    #empty-msg { font-size: 0.85rem; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>🎙️ Aitum Multistream — WebSocket Test</h1>
+
+  <!-- Connection -->
+  <section>
+    <h2>Connection</h2>
+    <div class="row">
+      <label for="host">Host</label>
+      <input id="host" type="text" value="localhost" style="max-width:160px" />
+      <label for="port">Port</label>
+      <input id="port" type="number" value="4455" style="max-width:80px" />
+    </div>
+    <div class="row">
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="leave blank if none" />
+    </div>
+    <div class="row" style="margin-top:0.4rem">
+      <span id="status-dot"></span>
+      <span id="status-text">Disconnected</span>
+      <button id="connect-btn" class="btn-primary" style="margin-left:auto">Connect</button>
+      <button id="disconnect-btn" class="btn-danger" disabled>Disconnect</button>
+    </div>
+  </section>
+
+  <!-- Outputs -->
+  <section>
+    <h2>Outputs (aitum-multistream)</h2>
+    <div id="output-list">
+      <span id="empty-msg">Connect to OBS to load outputs.</span>
+    </div>
+    <button id="refresh-btn" class="btn-neutral" disabled>↻ Refresh</button>
+  </section>
+
+  <!-- Log -->
+  <section>
+    <h2>Message Log</h2>
+    <div id="log"></div>
+  </section>
+
+  <script>
+  'use strict';
+
+  // ─── DOM ────────────────────────────────────────────────────────────────────
+  const hostEl        = document.getElementById('host');
+  const portEl        = document.getElementById('port');
+  const passwordEl    = document.getElementById('password');
+  const connectBtn    = document.getElementById('connect-btn');
+  const disconnectBtn = document.getElementById('disconnect-btn');
+  const refreshBtn    = document.getElementById('refresh-btn');
+  const statusDot     = document.getElementById('status-dot');
+  const statusText    = document.getElementById('status-text');
+  const outputList    = document.getElementById('output-list');
+  const logEl         = document.getElementById('log');
+
+  // ─── State ──────────────────────────────────────────────────────────────────
+  let ws          = null;
+  let pendingReqs = {};   // requestId → resolve
+
+  // ─── Logging ────────────────────────────────────────────────────────────────
+  function log(cls, msg) {
+    const now = new Date();
+    const ts  = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+    const line = document.createElement('div');
+    line.innerHTML = `<span class="ts">[${ts}]</span> <span class="${cls}">${escHtml(msg)}</span>`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ─── Status indicator ───────────────────────────────────────────────────────
+  function setStatus(state, label) {
+    statusDot.className = state;
+    statusText.textContent = label;
+  }
+
+  // ─── SHA-256 via Web Crypto ──────────────────────────────────────────────────
+  async function sha256Base64(str) {
+    const enc  = new TextEncoder();
+    const buf  = await crypto.subtle.digest('SHA-256', enc.encode(str));
+    const b64  = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    return b64;
+  }
+
+  // obs-websocket 5.x auth:
+  //   secret    = base64( sha256( password + salt ) )
+  //   auth      = base64( sha256( secret   + challenge ) )
+  async function buildAuthString(password, salt, challenge) {
+    const secret = await sha256Base64(password + salt);
+    const auth   = await sha256Base64(secret   + challenge);
+    return auth;
+  }
+
+  // ─── UUID ────────────────────────────────────────────────────────────────────
+  function uuid() {
+    return crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  // ─── Send a Request (op 6), returns a Promise for the response ───────────────
+  function sendRequest(requestType, requestData = {}) {
+    return new Promise((resolve, reject) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        reject(new Error('Not connected'));
+        return;
+      }
+      const requestId = uuid();
+      pendingReqs[requestId] = resolve;
+      const msg = { op: 6, d: { requestType, requestId, requestData } };
+      const json = JSON.stringify(msg);
+      log('send', '→ ' + json);
+      ws.send(json);
+    });
+  }
+
+  // ─── Vendor helper ──────────────────────────────────────────────────────────
+  function callVendorRequest(requestType, requestData = {}) {
+    return sendRequest('CallVendorRequest', {
+      vendorName: 'aitum-multistream',
+      requestType,
+      requestData,
+    });
+  }
+
+  // ─── Connect ────────────────────────────────────────────────────────────────
+  connectBtn.addEventListener('click', async () => {
+    if (ws) ws.close();
+
+    const host     = hostEl.value.trim() || 'localhost';
+    const port     = portEl.value.trim()  || '4455';
+    const password = passwordEl.value;
+    const url      = `ws://${host}:${port}`;
+
+    setStatus('connecting', `Connecting to ${url}…`);
+    connectBtn.disabled    = true;
+    disconnectBtn.disabled = false;
+    refreshBtn.disabled    = true;
+
+    ws = new WebSocket(url);
+
+    ws.addEventListener('open', () => {
+      log('info', `WebSocket opened to ${url}`);
+    });
+
+    ws.addEventListener('close', (e) => {
+      log('info', `Disconnected (code ${e.code})`);
+      setStatus('disconnected', 'Disconnected');
+      connectBtn.disabled    = false;
+      disconnectBtn.disabled = true;
+      refreshBtn.disabled    = true;
+      ws = null;
+      pendingReqs = {};
+    });
+
+    ws.addEventListener('error', () => {
+      log('err', 'WebSocket error');
+    });
+
+    ws.addEventListener('message', async (ev) => {
+      const msg = JSON.parse(ev.data);
+      log('recv', '← ' + ev.data);
+
+      switch (msg.op) {
+
+        // Op 0 — Hello
+        case 0: {
+          const d = msg.d;
+          let authStr = undefined;
+          if (d.authentication) {
+            if (!password) {
+              log('err', 'Server requires a password but none was given.');
+              ws.close();
+              return;
+            }
+            authStr = await buildAuthString(password, d.authentication.salt, d.authentication.challenge);
+          }
+          // Op 1 — Identify
+          const identify = { op: 1, d: { rpcVersion: 1 } };
+          if (authStr) identify.d.authentication = authStr;
+          ws.send(JSON.stringify(identify));
+          log('send', '→ ' + JSON.stringify(identify));
+          break;
+        }
+
+        // Op 2 — Identified (success)
+        case 2: {
+          setStatus('connected', 'Connected');
+          connectBtn.disabled = false;
+          log('info', 'Identified — loading output list…');
+          await refreshOutputList();
+          break;
+        }
+
+        // Op 7 — RequestResponse
+        case 7: {
+          const { requestId, requestStatus, responseData } = msg.d;
+          const resolve = pendingReqs[requestId];
+          if (resolve) {
+            delete pendingReqs[requestId];
+            resolve({ requestStatus, responseData });
+          }
+          break;
+        }
+
+        default:
+          break;
+      }
+    });
+  });
+
+  disconnectBtn.addEventListener('click', () => {
+    if (ws) ws.close();
+  });
+
+  // ─── Refresh output list ─────────────────────────────────────────────────────
+  refreshBtn.addEventListener('click', refreshOutputList);
+
+  async function refreshOutputList() {
+    outputList.innerHTML = '<span style="color:#888;font-size:.85rem">Loading…</span>';
+    try {
+      const res = await callVendorRequest('get_output_list');
+      const outputs = res?.responseData?.responseData?.outputs
+                   ?? res?.responseData?.outputs
+                   ?? [];
+      renderOutputs(outputs);
+      refreshBtn.disabled = false;
+    } catch (e) {
+      log('err', 'get_output_list failed: ' + e.message);
+      outputList.innerHTML = `<span style="color:#e05050;font-size:.85rem">Failed to load outputs: ${escHtml(e.message)}</span>`;
+    }
+  }
+
+  function renderOutputs(outputs) {
+    if (!outputs.length) {
+      outputList.innerHTML = '<span id="empty-msg">No outputs found.</span>';
+      return;
+    }
+    outputList.innerHTML = '';
+    for (const out of outputs) {
+      const row = document.createElement('div');
+      row.className = 'output-row';
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'output-name';
+      nameEl.textContent = out.outputName;
+
+      const badge = document.createElement('span');
+      badge.className = 'output-badge ' + (out.outputActive ? 'active' : 'inactive');
+      badge.textContent = out.outputActive ? 'ACTIVE' : 'INACTIVE';
+
+      const startBtn = document.createElement('button');
+      startBtn.className = 'btn-primary';
+      startBtn.textContent = 'Start';
+      startBtn.disabled = out.outputActive;
+      startBtn.addEventListener('click', () => doStartStop('start_output', out.outputName));
+
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'btn-danger';
+      stopBtn.textContent = 'Stop';
+      stopBtn.disabled = !out.outputActive;
+      stopBtn.addEventListener('click', () => doStartStop('stop_output', out.outputName));
+
+      row.appendChild(nameEl);
+      row.appendChild(badge);
+      row.appendChild(startBtn);
+      row.appendChild(stopBtn);
+      outputList.appendChild(row);
+    }
+  }
+
+  async function doStartStop(requestType, outputName) {
+    log('info', `${requestType} → ${outputName}`);
+    try {
+      const res = await callVendorRequest(requestType, { outputName });
+      const success = res?.responseData?.responseData?.success
+                   ?? res?.responseData?.success
+                   ?? false;
+      log(success ? 'recv' : 'err', `${requestType}(${outputName}): success=${success}`);
+      // Refresh list after a short delay to let OBS settle
+      setTimeout(refreshOutputList, 600);
+    } catch (e) {
+      log('err', `${requestType} failed: ${e.message}`);
+    }
+  }
+  </script>
+</body>
+</html>
