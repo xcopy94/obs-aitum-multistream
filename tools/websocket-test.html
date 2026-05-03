@@ -267,10 +267,20 @@
   connectBtn.addEventListener('click', async () => {
     if (ws) ws.close();
 
-    const host     = hostEl.value.trim() || 'localhost';
+    const rawHost  = hostEl.value.trim() || 'localhost';
     const port     = portEl.value.trim()  || '4455';
     const password = passwordEl.value;
-    const url      = `ws://${host}:${port}`;
+
+    // Accept ws:// or wss:// prefix typed/pasted into the host field.
+    let scheme = 'ws';
+    let host   = rawHost;
+    if (rawHost.startsWith('wss://')) {
+      scheme = 'wss'; host = rawHost.slice(6);
+    } else if (rawHost.startsWith('ws://')) {
+      scheme = 'ws';  host = rawHost.slice(5);
+    }
+
+    const url = `${scheme}://${host}:${port}`;
 
     setStatus('connecting', `Connecting to ${url}…`);
     connectBtn.disabled    = true;
