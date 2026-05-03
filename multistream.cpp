@@ -1155,7 +1155,7 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 						       false);
 				obs_output_release(output);
 			});
-			timer->start((int)(stop_secs * 1000));
+			timer->start(static_cast<int>(stop_secs * 1000));
 			stop_timers[name] = timer;
 		}
 	}
