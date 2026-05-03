@@ -1146,7 +1146,7 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 	if (obs_data_get_bool(settings, "auto_stop_enabled")) {
 		int64_t stop_secs = obs_data_get_int(settings, "auto_stop_secs");
 		if (stop_secs > 0) {
-			obs_output_addref(output);
+			obs_output_get_ref(output);
 			auto timer = new QTimer(this);
 			timer->setSingleShot(true);
 			connect(timer, &QTimer::timeout, [output] {
