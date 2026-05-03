@@ -268,7 +268,7 @@
     if (ws) ws.close();
 
     const rawHost  = hostEl.value.trim() || 'localhost';
-    const port     = portEl.value.trim()  || '4455';
+    const port     = portEl.value.trim();
     const password = passwordEl.value;
 
     // Accept ws:// or wss:// prefix typed/pasted into the host field.
@@ -280,7 +280,9 @@
       scheme = 'ws';  host = rawHost.slice(5);
     }
 
-    const url = `${scheme}://${host}:${port}`;
+    // Omit the port when the field is empty so the browser uses the default
+    // port for the scheme (80 for ws, 443 for wss).
+    const url = port ? `${scheme}://${host}:${port}` : `${scheme}://${host}`;
 
     setStatus('connecting', `Connecting to ${url}…`);
     connectBtn.disabled    = true;
