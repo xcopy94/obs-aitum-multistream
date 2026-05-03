@@ -549,6 +549,15 @@ MultistreamDock::~MultistreamDock()
 	videoCheckTimer.stop();
 	for (auto it = outputs.begin(); it != outputs.end(); it++) {
 		auto old = std::get<obs_output_t *>(*it);
+		auto timer_it = stop_timers.find(std::get<std::string>(*it));
+		if (timer_it != stop_timers.end()) {
+			if (timer_it->second->isActive()) {
+				timer_it->second->stop();
+				obs_output_release(old);
+			}
+			delete timer_it->second;
+			stop_timers.erase(timer_it);
+		}
 		signal_handler_t *signal = obs_output_get_signal_handler(old);
 		signal_handler_disconnect(signal, "start", stream_output_start, this);
 		signal_handler_disconnect(signal, "stop", stream_output_stop, this);
@@ -948,6 +957,15 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 			continue;
 		auto old = std::get<obs_output_t *>(*it);
 		auto service = obs_output_get_service(old);
+		auto timer_it = stop_timers.find(std::string(name));
+		if (timer_it != stop_timers.end()) {
+			if (timer_it->second->isActive()) {
+				timer_it->second->stop();
+				obs_output_release(old);
+			}
+			delete timer_it->second;
+			stop_timers.erase(timer_it);
+		}
 		if (obs_output_active(old)) {
 			signal_handler_t *signal = obs_output_get_signal_handler(old);
 			signal_handler_disconnect(signal, "stop", stream_output_stop, this);
@@ -1125,6 +1143,23 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 
 	outputs.push_back({obs_data_get_string(settings, "name"), output, streamButton});
 
+	if (obs_data_get_bool(settings, "auto_stop_enabled")) {
+		int64_t stop_secs = obs_data_get_int(settings, "auto_stop_secs");
+		if (stop_secs > 0) {
+			obs_output_addref(output);
+			auto timer = new QTimer(this);
+			timer->setSingleShot(true);
+			connect(timer, &QTimer::timeout, [output] {
+				if (obs_output_active(output))
+					obs_queue_task(OBS_TASK_GRAPHICS, [](void *param) { obs_output_stop((obs_output_t *)param); }, output,
+						       false);
+				obs_output_release(output);
+			});
+			timer->start((int)(stop_secs * 1000));
+			stop_timers[name] = timer;
+		}
+	}
+
 	return true;
 }
 
@@ -1167,6 +1202,21 @@ void MultistreamDock::stream_output_stop(void *data, calldata_t *calldata)
 		}
 		if (!md->exiting)
 			QMetaObject::invokeMethod(button, [output] { obs_output_release(output); }, Qt::QueuedConnection);
+		auto name = std::get<std::string>(*it);
+		QMetaObject::invokeMethod(
+			md,
+			[md, name, output] {
+				auto it2 = md->stop_timers.find(name);
+				if (it2 != md->stop_timers.end()) {
+					if (it2->second->isActive()) {
+						it2->second->stop();
+						obs_output_release(output);
+					}
+					delete it2->second;
+					md->stop_timers.erase(it2);
+				}
+			},
+			Qt::QueuedConnection);
 		md->outputs.erase(it);
 		break;
 	}

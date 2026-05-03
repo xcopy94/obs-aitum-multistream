@@ -3,6 +3,8 @@
 #include "config-dialog.hpp"
 #include <obs.h>
 #include <obs-frontend-api.h>
+#include <map>
+#include <string>
 #include <QFrame>
 #include <QPushButton>
 #include <QString>
@@ -37,6 +39,7 @@ private:
 	std::vector<video_t *> oldVideo;
 
 	std::vector<std::tuple<std::string, obs_output_t *, QPushButton *>> outputs;
+	std::map<std::string, QTimer *> stop_timers;
 	obs_data_array_t *vertical_outputs = nullptr;
 	bool exiting = false;
 

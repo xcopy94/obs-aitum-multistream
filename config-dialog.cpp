@@ -21,6 +21,7 @@
 #include <QUrl>
 #include <QIcon>
 #include <QTabWidget>
+#include <QTimeEdit>
 #include <QDialogButtonBox>
 
 #include "obs-module.h"
@@ -936,6 +937,27 @@ void OBSBasicSettings::AddServer(QFormLayout *outputsLayout, obs_data_t *setting
 
 	automationPageLayout->addRow(startWithMain);
 	automationPageLayout->addRow(stopWithMain);
+
+	auto autoStopEnabled = new QCheckBox(QString::fromUtf8(obs_module_text("AutoStopEnabled")));
+	autoStopEnabled->setChecked(obs_data_get_bool(settings, "auto_stop_enabled"));
+
+	int64_t stop_secs = obs_data_get_int(settings, "auto_stop_secs");
+	auto autoStopTimeEdit = new QTimeEdit(QTime((int)(stop_secs / 3600), (int)((stop_secs % 3600) / 60), (int)(stop_secs % 60)));
+	autoStopTimeEdit->setDisplayFormat("HH:mm:ss");
+	autoStopTimeEdit->setEnabled(obs_data_get_bool(settings, "auto_stop_enabled"));
+
+	connect(autoStopEnabled, &QCheckBox::stateChanged, [settings, autoStopEnabled, autoStopTimeEdit] {
+		bool enabled = autoStopEnabled->isChecked();
+		obs_data_set_bool(settings, "auto_stop_enabled", enabled);
+		autoStopTimeEdit->setEnabled(enabled);
+	});
+
+	connect(autoStopTimeEdit, &QTimeEdit::timeChanged, [settings](const QTime &t) {
+		obs_data_set_int(settings, "auto_stop_secs", t.hour() * 3600LL + t.minute() * 60LL + t.second());
+	});
+
+	automationPageLayout->addRow(autoStopEnabled);
+	automationPageLayout->addRow(QString::fromUtf8(obs_module_text("AutoStopDuration")), autoStopTimeEdit);
 
 	// Hook up
 	advancedTabWidget->addTab(videoPage, QString::fromUtf8(obs_module_text("VideoEncoderSettings")));
