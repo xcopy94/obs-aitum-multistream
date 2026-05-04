@@ -597,11 +597,26 @@ void MultistreamDock::frontend_event(enum obs_frontend_event event, void *privat
 
 		emit md->requestingStart(event == OBS_FRONTEND_EVENT_STREAMING_STARTING);
 
+		if (event == OBS_FRONTEND_EVENT_STREAMING_STARTED && ws_vendor) {
+			auto event_data = obs_data_create();
+			obs_data_set_string(event_data, "outputName", "builtin");
+			obs_data_set_bool(event_data, "outputActive", true);
+			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
+			obs_data_release(event_data);
+		}
 	} else if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPING || event == OBS_FRONTEND_EVENT_STREAMING_STOPPED) {
 		md->mainStreamButton->setChecked(false);
 		md->outputButtonStyle(md->mainStreamButton);
 
 		emit md->requestingStop(event == OBS_FRONTEND_EVENT_STREAMING_STOPPING);
+
+		if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPED && ws_vendor) {
+			auto event_data = obs_data_create();
+			obs_data_set_string(event_data, "outputName", "builtin");
+			obs_data_set_bool(event_data, "outputActive", false);
+			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
+			obs_data_release(event_data);
+		}
 	}
 }
 

@@ -468,12 +468,6 @@
                    ?? res?.responseData?.success
                    ?? false;
       log(success ? 'recv' : 'err', `${requestType}(${outputName}): success=${success}`);
-      if (success) {
-        // Optimistically update the row. For custom outputs the vendor event
-        // will arrive shortly and confirm the same state. For the builtin
-        // output no vendor event is emitted, so this is the only update.
-        updateOutputRow(outputName, requestType === 'start_output');
-      }
     } catch (e) {
       log('err', `${requestType} failed: ${e.message}`);
     }
