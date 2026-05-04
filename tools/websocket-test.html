@@ -152,13 +152,13 @@
     <h2>Connection</h2>
     <div class="row">
       <label for="host">Host</label>
-      <input id="host" type="text" value="localhost" style="max-width:160px" />
+      <input id="host" type="text" value="localhost" />
       <label for="port">Port</label>
       <input id="port" type="number" value="4455" style="max-width:80px" />
     </div>
     <div class="row">
       <label for="password">Password</label>
-      <input id="password" type="password" placeholder="leave blank if none" />
+      <input id="password" type="password" placeholder="leave blank if none" style="max-width:160px" />
     </div>
     <div class="row" style="margin-top:0.4rem">
       <span id="status-dot"></span>
@@ -509,8 +509,8 @@
       stopBtn.addEventListener('click', () => doStartStop('stop_output', out.outputName));
 
       row.appendChild(nameEl);
-      row.appendChild(badge);
       row.appendChild(durationEl);
+      row.appendChild(badge);
       row.appendChild(startBtn);
       row.appendChild(stopBtn);
       outputList.appendChild(row);
