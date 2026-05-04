@@ -342,7 +342,7 @@
             authStr = await buildAuthString(password, d.authentication.salt, d.authentication.challenge);
           }
           // Op 1 — Identify
-          const identify = { op: 1, d: { rpcVersion: 1 } };
+          const identify = { op: 1, d: { rpcVersion: 1, eventSubscriptions: 512 } };
           if (authStr) identify.d.authentication = authStr;
           ws.send(JSON.stringify(identify));
           log('send', '→ ' + JSON.stringify(identify));
@@ -355,6 +355,17 @@
           connectBtn.disabled = false;
           log('info', 'Identified — loading output list…');
           await refreshOutputList();
+          break;
+        }
+
+        // Op 5 — Event (vendor events arrive here)
+        case 5: {
+          const { eventType, eventData } = msg.d;
+          if (eventType === 'VendorEvent' &&
+              eventData?.vendorName === 'aitum-multistream' &&
+              eventData?.eventType  === 'output_state_changed') {
+            refreshOutputList();
+          }
           break;
         }
 

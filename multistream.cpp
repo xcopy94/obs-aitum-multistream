@@ -24,6 +24,7 @@ OBS_MODULE_AUTHOR("Aitum");
 OBS_MODULE_USE_DEFAULT_LOCALE("aitum-multistream", "en-US")
 
 static MultistreamDock *multistream_dock = nullptr;
+static obs_websocket_vendor ws_vendor = nullptr;
 
 update_info_t *version_update_info = nullptr;
 
@@ -60,9 +61,11 @@ void obs_module_post_load()
 	if (multistream_dock)
 		multistream_dock->LoadVerticalOutputs(true);
 
-	auto vendor = obs_websocket_register_vendor("aitum-multistream");
-	if (!vendor)
+	ws_vendor = obs_websocket_register_vendor("aitum-multistream");
+	if (!ws_vendor)
 		return;
+
+	auto vendor = ws_vendor;
 
 	obs_websocket_vendor_register_request(
 		vendor, "get_output_list",
@@ -1180,6 +1183,14 @@ void MultistreamDock::stream_output_start(void *data, calldata_t *calldata)
 				},
 				Qt::QueuedConnection);
 		}
+		if (ws_vendor) {
+			auto name = std::get<std::string>(*it);
+			auto event_data = obs_data_create();
+			obs_data_set_string(event_data, "outputName", name.c_str());
+			obs_data_set_bool(event_data, "outputActive", true);
+			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
+			obs_data_release(event_data);
+		}
 	}
 }
 
@@ -1203,6 +1214,13 @@ void MultistreamDock::stream_output_stop(void *data, calldata_t *calldata)
 		if (!md->exiting)
 			QMetaObject::invokeMethod(button, [output] { obs_output_release(output); }, Qt::QueuedConnection);
 		auto name = std::get<std::string>(*it);
+		if (ws_vendor) {
+			auto event_data = obs_data_create();
+			obs_data_set_string(event_data, "outputName", name.c_str());
+			obs_data_set_bool(event_data, "outputActive", false);
+			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
+			obs_data_release(event_data);
+		}
 		QMetaObject::invokeMethod(
 			md,
 			[md, name, output] {
