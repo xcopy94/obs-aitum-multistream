@@ -364,7 +364,8 @@
           if (eventType === 'VendorEvent' &&
               eventData?.vendorName === 'aitum-multistream' &&
               eventData?.eventType  === 'output_state_changed') {
-            refreshOutputList();
+            const ed = eventData?.eventData ?? {};
+            updateOutputRow(ed.outputName, ed.outputActive);
           }
           break;
         }
@@ -393,6 +394,18 @@
   // ─── Refresh output list ─────────────────────────────────────────────────────
   refreshBtn.addEventListener('click', refreshOutputList);
 
+  function updateOutputRow(outputName, active) {
+    const row = outputList.querySelector(`[data-output-name="${CSS.escape(outputName)}"]`);
+    if (!row) return;
+    const badge    = row.querySelector('.output-badge');
+    const startBtn = row.querySelectorAll('button')[0];
+    const stopBtn  = row.querySelectorAll('button')[1];
+    badge.className   = 'output-badge ' + (active ? 'active' : 'inactive');
+    badge.textContent = active ? 'ACTIVE' : 'INACTIVE';
+    startBtn.disabled = active;
+    stopBtn.disabled  = !active;
+  }
+
   async function refreshOutputList() {
     outputList.innerHTML = '<span style="color:#888;font-size:.85rem">Loading…</span>';
     try {
@@ -417,6 +430,7 @@
     for (const out of outputs) {
       const row = document.createElement('div');
       row.className = 'output-row';
+      row.dataset.outputName = out.outputName;
 
       const nameEl = document.createElement('span');
       nameEl.className = 'output-name';
@@ -454,8 +468,6 @@
                    ?? res?.responseData?.success
                    ?? false;
       log(success ? 'recv' : 'err', `${requestType}(${outputName}): success=${success}`);
-      // Refresh list after a short delay to let OBS settle
-      setTimeout(refreshOutputList, 600);
     } catch (e) {
       log('err', `${requestType} failed: ${e.message}`);
     }
