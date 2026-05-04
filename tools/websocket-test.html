@@ -508,11 +508,15 @@
       stopBtn.hidden = !out.outputActive;
       stopBtn.addEventListener('click', () => doStartStop('stop_output', out.outputName));
 
+      const controls = document.createElement('div');
+      controls.style.cssText = 'display:flex;align-items:center;gap:0.3rem;margin-left:auto';
+
       row.appendChild(nameEl);
-      row.appendChild(badge);
       row.appendChild(durationEl);
-      row.appendChild(startBtn);
-      row.appendChild(stopBtn);
+      controls.appendChild(badge);
+      controls.appendChild(startBtn);
+      controls.appendChild(stopBtn);
+      row.appendChild(controls);
       outputList.appendChild(row);
 
       if (out.outputActive && out.outputDuration > 0)
