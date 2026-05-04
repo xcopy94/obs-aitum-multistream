@@ -164,7 +164,7 @@
       <span id="status-dot"></span>
       <span id="status-text">Disconnected</span>
       <button id="connect-btn" class="btn-primary" style="margin-left:auto">Connect</button>
-      <button id="disconnect-btn" class="btn-danger" disabled>Disconnect</button>
+      <button id="disconnect-btn" class="btn-danger" hidden>Disconnect</button>
     </div>
   </section>
 
@@ -346,9 +346,9 @@
     const url = port ? `${scheme}://${host}:${port}` : `${scheme}://${host}`;
 
     setStatus('connecting', `Connecting to ${url}…`);
-    connectBtn.disabled    = true;
-    disconnectBtn.disabled = false;
-    refreshBtn.disabled    = true;
+    connectBtn.hidden    = true;
+    disconnectBtn.hidden = false;
+    refreshBtn.disabled  = true;
 
     ws = new WebSocket(url);
 
@@ -359,9 +359,9 @@
     ws.addEventListener('close', (e) => {
       log('info', `Disconnected (code ${e.code})`);
       setStatus('disconnected', 'Disconnected');
-      connectBtn.disabled    = false;
-      disconnectBtn.disabled = true;
-      refreshBtn.disabled    = true;
+      connectBtn.hidden    = false;
+      disconnectBtn.hidden = true;
+      refreshBtn.disabled  = true;
       ws = null;
       pendingReqs = {};
       Object.keys(countdowns).forEach(name => stopCountdown(name));
@@ -400,7 +400,6 @@
         // Op 2 — Identified (success)
         case 2: {
           setStatus('connected', 'Connected');
-          connectBtn.disabled = false;
           log('info', 'Identified — loading output list…');
           await refreshOutputList();
           break;
@@ -450,8 +449,8 @@
     const stopBtn  = row.querySelectorAll('button')[1];
     badge.className   = 'output-badge ' + (active ? 'active' : 'inactive');
     badge.textContent = active ? 'ACTIVE' : 'INACTIVE';
-    startBtn.disabled = active;
-    stopBtn.disabled  = !active;
+    startBtn.hidden = active;
+    stopBtn.hidden  = !active;
     if (active && duration > 0) {
       startCountdown(outputName, duration);
     } else if (!active) {
@@ -500,13 +499,13 @@
       const startBtn = document.createElement('button');
       startBtn.className = 'btn-primary';
       startBtn.textContent = 'Start';
-      startBtn.disabled = out.outputActive;
+      startBtn.hidden = out.outputActive;
       startBtn.addEventListener('click', () => doStartStop('start_output', out.outputName));
 
       const stopBtn = document.createElement('button');
       stopBtn.className = 'btn-danger';
       stopBtn.textContent = 'Stop';
-      stopBtn.disabled = !out.outputActive;
+      stopBtn.hidden = !out.outputActive;
       stopBtn.addEventListener('click', () => doStartStop('stop_output', out.outputName));
 
       row.appendChild(nameEl);
