@@ -190,6 +190,20 @@
   const outputList    = document.getElementById('output-list');
   const logEl         = document.getElementById('log');
 
+  // ─── Persist connection fields in localStorage ───────────────────────────────
+  const LS_HOST = 'obs_ws_host';
+  const LS_PORT = 'obs_ws_port';
+  const LS_PASS = 'obs_ws_password';
+
+  // Restore saved values (fall back to the HTML defaults already in the input)
+  if (localStorage.getItem(LS_HOST) !== null) hostEl.value     = localStorage.getItem(LS_HOST);
+  if (localStorage.getItem(LS_PORT) !== null) portEl.value     = localStorage.getItem(LS_PORT);
+  if (localStorage.getItem(LS_PASS) !== null) passwordEl.value = localStorage.getItem(LS_PASS);
+
+  hostEl.addEventListener('input',     () => localStorage.setItem(LS_HOST, hostEl.value));
+  portEl.addEventListener('input',     () => localStorage.setItem(LS_PORT, portEl.value));
+  passwordEl.addEventListener('input', () => localStorage.setItem(LS_PASS, passwordEl.value));
+
   // ─── State ──────────────────────────────────────────────────────────────────
   let ws          = null;
   let pendingReqs = {};   // requestId → resolve
