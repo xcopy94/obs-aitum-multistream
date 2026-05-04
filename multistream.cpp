@@ -601,6 +601,11 @@ void MultistreamDock::frontend_event(enum obs_frontend_event event, void *privat
 			auto event_data = obs_data_create();
 			obs_data_set_string(event_data, "outputName", "builtin");
 			obs_data_set_bool(event_data, "outputActive", true);
+			if (md->current_config) {
+				int64_t stop_secs = obs_data_get_int(md->current_config, "builtin_auto_stop_secs");
+				if (obs_data_get_bool(md->current_config, "builtin_auto_stop_enabled") && stop_secs > 0)
+					obs_data_set_int(event_data, "outputDuration", stop_secs);
+			}
 			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
 			obs_data_release(event_data);
 		}
@@ -1206,15 +1211,17 @@ void MultistreamDock::stream_output_start(void *data, calldata_t *calldata)
 				},
 				Qt::QueuedConnection);
 		}
+		auto pending_it = md->pending_auto_stop_secs.find(output);
 		if (ws_vendor) {
 			auto name = std::get<std::string>(*it);
 			auto event_data = obs_data_create();
 			obs_data_set_string(event_data, "outputName", name.c_str());
 			obs_data_set_bool(event_data, "outputActive", true);
+			if (pending_it != md->pending_auto_stop_secs.end())
+				obs_data_set_int(event_data, "outputDuration", pending_it->second);
 			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
 			obs_data_release(event_data);
 		}
-		auto pending_it = md->pending_auto_stop_secs.find(output);
 		if (pending_it != md->pending_auto_stop_secs.end()) {
 			int64_t stop_secs = pending_it->second;
 			md->pending_auto_stop_secs.erase(pending_it);
@@ -1378,7 +1385,14 @@ obs_data_t *MultistreamDock::GetOutputList()
 	{
 		obs_data_t *item = obs_data_create();
 		obs_data_set_string(item, "outputName", "builtin");
-		obs_data_set_bool(item, "outputActive", obs_frontend_streaming_active());
+		bool active = obs_frontend_streaming_active();
+		obs_data_set_bool(item, "outputActive", active);
+		if (active) {
+			auto it = stop_timers.find("builtin");
+			if (it != stop_timers.end() && it->second->isActive())
+				obs_data_set_int(item, "outputDuration",
+						 (it->second->remainingTime() + 999) / 1000);
+		}
 		obs_data_array_push_back(arr, item);
 		obs_data_release(item);
 	}
@@ -1400,6 +1414,12 @@ obs_data_t *MultistreamDock::GetOutputList()
 			obs_data_t *out_item = obs_data_create();
 			obs_data_set_string(out_item, "outputName", name);
 			obs_data_set_bool(out_item, "outputActive", active);
+			if (active) {
+				auto timer_it = stop_timers.find(std::string(name));
+				if (timer_it != stop_timers.end() && timer_it->second->isActive())
+					obs_data_set_int(out_item, "outputDuration",
+							 (timer_it->second->remainingTime() + 999) / 1000);
+			}
 			obs_data_array_push_back(arr, out_item);
 			obs_data_release(out_item);
 			obs_data_release(item_data);

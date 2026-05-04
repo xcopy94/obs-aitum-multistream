@@ -131,6 +131,14 @@
     #log .err  { color: #ff8080; }
     #log .info { color: #f0c060; }
 
+    .output-duration {
+      font-size: 0.78rem;
+      font-family: monospace;
+      color: #f0c060;
+      min-width: 3.8rem;
+      text-align: right;
+    }
+
     #refresh-btn { margin-top: 0.75rem; }
 
     #empty-msg { font-size: 0.85rem; color: #666; }
@@ -207,6 +215,45 @@
   // ─── State ──────────────────────────────────────────────────────────────────
   let ws          = null;
   let pendingReqs = {};   // requestId → resolve
+  let countdowns  = {};   // outputName → intervalId
+
+  // ─── Countdown helpers ───────────────────────────────────────────────────────
+  function formatDuration(secs) {
+    const h  = Math.floor(secs / 3600);
+    const m  = Math.floor((secs % 3600) / 60);
+    const s  = secs % 60;
+    const mm = String(m).padStart(2, '0');
+    const ss = String(s).padStart(2, '0');
+    return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+
+  function startCountdown(outputName, durationSecs) {
+    stopCountdown(outputName);
+    const row = outputList.querySelector(`[data-output-name="${CSS.escape(outputName)}"]`);
+    if (!row) return;
+    const el = row.querySelector('.output-duration');
+    if (!el) return;
+    let remaining = Math.max(0, Math.round(durationSecs));
+    el.textContent = formatDuration(remaining);
+    if (remaining <= 0) return;
+    countdowns[outputName] = setInterval(() => {
+      remaining--;
+      el.textContent = formatDuration(remaining);
+      if (remaining <= 0) stopCountdown(outputName);
+    }, 1000);
+  }
+
+  function stopCountdown(outputName) {
+    if (countdowns[outputName] !== undefined) {
+      clearInterval(countdowns[outputName]);
+      delete countdowns[outputName];
+    }
+    const row = outputList.querySelector(`[data-output-name="${CSS.escape(outputName)}"]`);
+    if (row) {
+      const el = row.querySelector('.output-duration');
+      if (el) el.textContent = '';
+    }
+  }
 
   // ─── Logging ────────────────────────────────────────────────────────────────
   function log(cls, msg) {
@@ -317,6 +364,7 @@
       refreshBtn.disabled    = true;
       ws = null;
       pendingReqs = {};
+      Object.keys(countdowns).forEach(name => stopCountdown(name));
     });
 
     ws.addEventListener('error', () => {
@@ -365,7 +413,7 @@
               eventData?.vendorName === 'aitum-multistream' &&
               eventData?.eventType  === 'output_state_changed') {
             const ed = eventData?.eventData ?? {};
-            updateOutputRow(ed.outputName, ed.outputActive);
+            updateOutputRow(ed.outputName, ed.outputActive, ed.outputDuration ?? 0);
           }
           break;
         }
@@ -394,7 +442,7 @@
   // ─── Refresh output list ─────────────────────────────────────────────────────
   refreshBtn.addEventListener('click', refreshOutputList);
 
-  function updateOutputRow(outputName, active) {
+  function updateOutputRow(outputName, active, duration) {
     const row = outputList.querySelector(`[data-output-name="${CSS.escape(outputName)}"]`);
     if (!row) return;
     const badge    = row.querySelector('.output-badge');
@@ -404,6 +452,11 @@
     badge.textContent = active ? 'ACTIVE' : 'INACTIVE';
     startBtn.disabled = active;
     stopBtn.disabled  = !active;
+    if (active && duration > 0) {
+      startCountdown(outputName, duration);
+    } else if (!active) {
+      stopCountdown(outputName);
+    }
   }
 
   async function refreshOutputList() {
@@ -426,6 +479,7 @@
       outputList.innerHTML = '<span id="empty-msg">No outputs found.</span>';
       return;
     }
+    Object.keys(countdowns).forEach(name => stopCountdown(name));
     outputList.innerHTML = '';
     for (const out of outputs) {
       const row = document.createElement('div');
@@ -439,6 +493,9 @@
       const badge = document.createElement('span');
       badge.className = 'output-badge ' + (out.outputActive ? 'active' : 'inactive');
       badge.textContent = out.outputActive ? 'ACTIVE' : 'INACTIVE';
+
+      const durationEl = document.createElement('span');
+      durationEl.className = 'output-duration';
 
       const startBtn = document.createElement('button');
       startBtn.className = 'btn-primary';
@@ -454,9 +511,13 @@
 
       row.appendChild(nameEl);
       row.appendChild(badge);
+      row.appendChild(durationEl);
       row.appendChild(startBtn);
       row.appendChild(stopBtn);
       outputList.appendChild(row);
+
+      if (out.outputActive && out.outputDuration > 0)
+        startCountdown(out.outputName, out.outputDuration);
     }
   }
 
