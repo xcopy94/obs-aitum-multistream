@@ -604,6 +604,16 @@ void MultistreamDock::frontend_event(enum obs_frontend_event event, void *privat
 			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
 			obs_data_release(event_data);
 		}
+		if (event == OBS_FRONTEND_EVENT_STREAMING_STARTED && md->current_config) {
+			int64_t stop_secs = obs_data_get_int(md->current_config, "builtin_auto_stop_secs");
+			if (obs_data_get_bool(md->current_config, "builtin_auto_stop_enabled") && stop_secs > 0) {
+				auto timer = new QTimer(md);
+				timer->setSingleShot(true);
+				QTimer::connect(timer, &QTimer::timeout, [] { obs_frontend_streaming_stop(); });
+				timer->start(static_cast<int>(stop_secs * 1000));
+				md->stop_timers["builtin"] = timer;
+			}
+		}
 	} else if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPING || event == OBS_FRONTEND_EVENT_STREAMING_STOPPED) {
 		md->mainStreamButton->setChecked(false);
 		md->outputButtonStyle(md->mainStreamButton);
@@ -616,6 +626,15 @@ void MultistreamDock::frontend_event(enum obs_frontend_event event, void *privat
 			obs_data_set_bool(event_data, "outputActive", false);
 			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
 			obs_data_release(event_data);
+		}
+		if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPED) {
+			auto it = md->stop_timers.find("builtin");
+			if (it != md->stop_timers.end()) {
+				if (it->second->isActive())
+					it->second->stop();
+				delete it->second;
+				md->stop_timers.erase(it);
+			}
 		}
 	}
 }
@@ -1163,19 +1182,8 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 
 	if (obs_data_get_bool(settings, "auto_stop_enabled")) {
 		int64_t stop_secs = obs_data_get_int(settings, "auto_stop_secs");
-		if (stop_secs > 0) {
-			obs_output_get_ref(output);
-			auto timer = new QTimer(this);
-			timer->setSingleShot(true);
-			connect(timer, &QTimer::timeout, [output] {
-				if (obs_output_active(output))
-					obs_queue_task(OBS_TASK_GRAPHICS, [](void *param) { obs_output_stop((obs_output_t *)param); }, output,
-						       false);
-				obs_output_release(output);
-			});
-			timer->start(static_cast<int>(stop_secs * 1000));
-			stop_timers[name] = timer;
-		}
+		if (stop_secs > 0)
+			pending_auto_stop_secs[output] = stop_secs;
 	}
 
 	return true;
@@ -1205,6 +1213,30 @@ void MultistreamDock::stream_output_start(void *data, calldata_t *calldata)
 			obs_data_set_bool(event_data, "outputActive", true);
 			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
 			obs_data_release(event_data);
+		}
+		auto pending_it = md->pending_auto_stop_secs.find(output);
+		if (pending_it != md->pending_auto_stop_secs.end()) {
+			int64_t stop_secs = pending_it->second;
+			md->pending_auto_stop_secs.erase(pending_it);
+			auto name = std::get<std::string>(*it);
+			obs_output_get_ref(output);
+			QMetaObject::invokeMethod(
+				md,
+				[md, name, output, stop_secs] {
+					auto timer = new QTimer(md);
+					timer->setSingleShot(true);
+					QTimer::connect(timer, &QTimer::timeout, [output] {
+						if (obs_output_active(output))
+							obs_queue_task(
+								OBS_TASK_GRAPHICS,
+								[](void *param) { obs_output_stop((obs_output_t *)param); },
+								output, false);
+						obs_output_release(output);
+					});
+					timer->start(static_cast<int>(stop_secs * 1000));
+					md->stop_timers[name] = timer;
+				},
+				Qt::QueuedConnection);
 		}
 	}
 }
@@ -1236,6 +1268,7 @@ void MultistreamDock::stream_output_stop(void *data, calldata_t *calldata)
 			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
 			obs_data_release(event_data);
 		}
+		md->pending_auto_stop_secs.erase(output);
 		QMetaObject::invokeMethod(
 			md,
 			[md, name, output] {
