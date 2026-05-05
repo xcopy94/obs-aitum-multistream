@@ -442,11 +442,8 @@
   function updateOutputRow(outputName, active, duration) {
     const row = outputList.querySelector(`[data-output-name="${CSS.escape(outputName)}"]`);
     if (!row) return;
-    const badge    = row.querySelector('.output-badge');
     const startBtn = row.querySelectorAll('button')[0];
     const stopBtn  = row.querySelectorAll('button')[1];
-    badge.className   = 'output-badge ' + (active ? 'active' : 'inactive');
-    badge.textContent = active ? 'ACTIVE' : 'INACTIVE';
     startBtn.hidden = active;
     stopBtn.hidden  = !active;
     if (active) {
@@ -487,10 +484,6 @@
       nameEl.className = 'output-name';
       nameEl.textContent = out.outputName;
 
-      const badge = document.createElement('span');
-      badge.className = 'output-badge ' + (out.outputActive ? 'active' : 'inactive');
-      badge.textContent = out.outputActive ? 'ACTIVE' : 'INACTIVE';
-
       const durationEl = document.createElement('span');
       durationEl.className = 'output-duration';
 
@@ -508,7 +501,6 @@
 
       row.appendChild(nameEl);
       row.appendChild(durationEl);
-      row.appendChild(badge);
       row.appendChild(startBtn);
       row.appendChild(stopBtn);
       outputList.appendChild(row);
