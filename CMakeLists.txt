@@ -50,15 +50,28 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_D
 
 # obs-websocket is bundled with OBS Studio (plugins/obs-websocket).
 # In-tree builds can link against the interface target it defines.
-# Out-of-tree builds find the installed header alongside the other OBS headers.
+# Out-of-tree builds find the installed header alongside the other OBS headers,
+# or directly from a cloned obs-websocket source tree.
 if(BUILD_OUT_OF_TREE)
+  set(OBS_WEBSOCKET_DIR "" CACHE PATH "Path to an obs-websocket source or install tree")
+  set(OBS_WEBSOCKET_SIBLING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../obs-websocket")
   find_path(
     OBS_WEBSOCKET_API_INCLUDE_DIR
     NAMES obs-websocket-api.h
-    PATH_SUFFIXES obs)
+    HINTS
+      ${OBS_WEBSOCKET_DIR}
+      ${OBS_WEBSOCKET_SIBLING_DIR}
+      ENV OBS_WEBSOCKET_DIR
+    PATH_SUFFIXES
+      ""
+      obs
+      include
+      include/obs
+      lib)
   if(NOT OBS_WEBSOCKET_API_INCLUDE_DIR)
     message(FATAL_ERROR "obs-websocket-api.h not found. "
-                        "Install OBS Studio development headers.")
+                        "Install OBS Studio development headers, or set OBS_WEBSOCKET_DIR "
+                        "to an obs-websocket checkout that contains lib/obs-websocket-api.h.")
   endif()
   target_include_directories(${PROJECT_NAME} PRIVATE "${OBS_WEBSOCKET_API_INCLUDE_DIR}")
 else()
