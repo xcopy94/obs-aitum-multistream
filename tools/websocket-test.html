@@ -227,23 +227,21 @@
     return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
   }
 
-  function startCountdown(outputName, durationSecs) {
-    stopCountdown(outputName);
+  function startUptime(outputName, initialSecs) {
+    stopUptime(outputName);
     const row = outputList.querySelector(`[data-output-name="${CSS.escape(outputName)}"]`);
     if (!row) return;
     const el = row.querySelector('.output-duration');
     if (!el) return;
-    let remaining = Math.max(0, Math.round(durationSecs));
-    el.textContent = formatDuration(remaining);
-    if (remaining <= 0) return;
+    let elapsed = Math.max(0, Math.round(initialSecs));
+    el.textContent = formatDuration(elapsed);
     countdowns[outputName] = setInterval(() => {
-      remaining--;
-      el.textContent = formatDuration(remaining);
-      if (remaining <= 0) stopCountdown(outputName);
+      elapsed++;
+      el.textContent = formatDuration(elapsed);
     }, 1000);
   }
 
-  function stopCountdown(outputName) {
+  function stopUptime(outputName) {
     if (countdowns[outputName] !== undefined) {
       clearInterval(countdowns[outputName]);
       delete countdowns[outputName];
@@ -364,7 +362,7 @@
       refreshBtn.disabled  = true;
       ws = null;
       pendingReqs = {};
-      Object.keys(countdowns).forEach(name => stopCountdown(name));
+      Object.keys(countdowns).forEach(name => stopUptime(name));
     });
 
     ws.addEventListener('error', () => {
@@ -451,10 +449,10 @@
     badge.textContent = active ? 'ACTIVE' : 'INACTIVE';
     startBtn.hidden = active;
     stopBtn.hidden  = !active;
-    if (active && duration > 0) {
-      startCountdown(outputName, duration);
+    if (active) {
+      startUptime(outputName, duration);
     } else if (!active) {
-      stopCountdown(outputName);
+      stopUptime(outputName);
     }
   }
 
@@ -478,7 +476,7 @@
       outputList.innerHTML = '<span id="empty-msg">No outputs found.</span>';
       return;
     }
-    Object.keys(countdowns).forEach(name => stopCountdown(name));
+      Object.keys(countdowns).forEach(name => stopUptime(name));
     outputList.innerHTML = '';
     for (const out of outputs) {
       const row = document.createElement('div');
@@ -515,8 +513,8 @@
       row.appendChild(stopBtn);
       outputList.appendChild(row);
 
-      if (out.outputActive && out.outputDuration > 0)
-        startCountdown(out.outputName, out.outputDuration);
+      if (out.outputActive)
+        startUptime(out.outputName, out.outputDuration ?? 0);
     }
   }
 

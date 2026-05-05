@@ -41,6 +41,7 @@ private:
 	std::vector<std::tuple<std::string, obs_output_t *, QPushButton *>> outputs;
 	std::map<std::string, QTimer *> stop_timers;
 	std::map<obs_output_t *, int64_t> pending_auto_stop_secs;
+	std::map<std::string, qint64> output_start_ms;
 	obs_data_array_t *vertical_outputs = nullptr;
 	bool exiting = false;
 

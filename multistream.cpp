@@ -4,6 +4,7 @@
 #include "obs-websocket-api.h"
 #include "version.h"
 #include <obs-frontend-api.h>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QGroupBox>
 #include <QLabel>
@@ -597,15 +598,13 @@ void MultistreamDock::frontend_event(enum obs_frontend_event event, void *privat
 
 		emit md->requestingStart(event == OBS_FRONTEND_EVENT_STREAMING_STARTING);
 
+		if (event == OBS_FRONTEND_EVENT_STREAMING_STARTED) {
+			md->output_start_ms["builtin"] = QDateTime::currentMSecsSinceEpoch();
+		}
 		if (event == OBS_FRONTEND_EVENT_STREAMING_STARTED && ws_vendor) {
 			auto event_data = obs_data_create();
 			obs_data_set_string(event_data, "outputName", "builtin");
 			obs_data_set_bool(event_data, "outputActive", true);
-			if (md->current_config) {
-				int64_t stop_secs = obs_data_get_int(md->current_config, "builtin_auto_stop_secs");
-				if (obs_data_get_bool(md->current_config, "builtin_auto_stop_enabled") && stop_secs > 0)
-					obs_data_set_int(event_data, "outputDuration", stop_secs);
-			}
 			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
 			obs_data_release(event_data);
 		}
@@ -633,6 +632,7 @@ void MultistreamDock::frontend_event(enum obs_frontend_event event, void *privat
 			obs_data_release(event_data);
 		}
 		if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPED) {
+			md->output_start_ms.erase("builtin");
 			auto it = md->stop_timers.find("builtin");
 			if (it != md->stop_timers.end()) {
 				if (it->second->isActive())
@@ -1212,13 +1212,12 @@ void MultistreamDock::stream_output_start(void *data, calldata_t *calldata)
 				Qt::QueuedConnection);
 		}
 		auto pending_it = md->pending_auto_stop_secs.find(output);
+		md->output_start_ms[std::get<std::string>(*it)] = QDateTime::currentMSecsSinceEpoch();
 		if (ws_vendor) {
 			auto name = std::get<std::string>(*it);
 			auto event_data = obs_data_create();
 			obs_data_set_string(event_data, "outputName", name.c_str());
 			obs_data_set_bool(event_data, "outputActive", true);
-			if (pending_it != md->pending_auto_stop_secs.end())
-				obs_data_set_int(event_data, "outputDuration", pending_it->second);
 			obs_websocket_vendor_emit_event(ws_vendor, "output_state_changed", event_data);
 			obs_data_release(event_data);
 		}
@@ -1268,6 +1267,7 @@ void MultistreamDock::stream_output_stop(void *data, calldata_t *calldata)
 		if (!md->exiting)
 			QMetaObject::invokeMethod(button, [output] { obs_output_release(output); }, Qt::QueuedConnection);
 		auto name = std::get<std::string>(*it);
+		md->output_start_ms.erase(name);
 		if (ws_vendor) {
 			auto event_data = obs_data_create();
 			obs_data_set_string(event_data, "outputName", name.c_str());
@@ -1388,10 +1388,10 @@ obs_data_t *MultistreamDock::GetOutputList()
 		bool active = obs_frontend_streaming_active();
 		obs_data_set_bool(item, "outputActive", active);
 		if (active) {
-			auto it = stop_timers.find("builtin");
-			if (it != stop_timers.end() && it->second->isActive())
+			auto it = output_start_ms.find("builtin");
+			if (it != output_start_ms.end())
 				obs_data_set_int(item, "outputDuration",
-						 (it->second->remainingTime() + 999) / 1000);
+						 (QDateTime::currentMSecsSinceEpoch() - it->second) / 1000);
 		}
 		obs_data_array_push_back(arr, item);
 		obs_data_release(item);
@@ -1415,10 +1415,10 @@ obs_data_t *MultistreamDock::GetOutputList()
 			obs_data_set_string(out_item, "outputName", name);
 			obs_data_set_bool(out_item, "outputActive", active);
 			if (active) {
-				auto timer_it = stop_timers.find(std::string(name));
-				if (timer_it != stop_timers.end() && timer_it->second->isActive())
+				auto start_it = output_start_ms.find(std::string(name));
+				if (start_it != output_start_ms.end())
 					obs_data_set_int(out_item, "outputDuration",
-							 (timer_it->second->remainingTime() + 999) / 1000);
+							 (QDateTime::currentMSecsSinceEpoch() - start_it->second) / 1000);
 			}
 			obs_data_array_push_back(arr, out_item);
 			obs_data_release(out_item);
