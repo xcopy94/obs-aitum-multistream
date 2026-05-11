@@ -370,7 +370,13 @@
     });
 
     ws.addEventListener('message', async (ev) => {
-      const msg = JSON.parse(ev.data);
+      let msg;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch (e) {
+        log('err', 'Invalid JSON received: ' + e.message);
+        return;
+      }
       log('recv', '← ' + ev.data);
 
       switch (msg.op) {
