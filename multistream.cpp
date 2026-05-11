@@ -515,6 +515,8 @@ MultistreamDock::MultistreamDock(QWidget *parent) : QFrame(parent)
 			}
 		}
 		auto ph = obs_get_proc_handler();
+		if (!ph)
+			return;
 		struct calldata cd;
 		calldata_init(&cd);
 		idx = 0;
@@ -528,8 +530,9 @@ MultistreamDock::MultistreamDock(QWidget *parent) : QFrame(parent)
 			if (proc_handler_call(ph, "aitum_vertical_get_stream_output", &cd)) {
 				output = (obs_output_t *)calldata_ptr(&cd, "output");
 			}
-			bool active = obs_output_active(output);
-			obs_output_release(output);
+			bool active = output ? obs_output_active(output) : false;
+			if (output)
+				obs_output_release(output);
 			foreach(QObject * c, streamGroup->children())
 			{
 				std::string cn = c->metaObject()->className();
@@ -726,6 +729,7 @@ void MultistreamDock::LoadOutput(obs_data_t *output_data, bool vertical)
 {
 	auto nameChars = obs_data_get_string(output_data, "name");
 	auto name = QString::fromUtf8(nameChars);
+	std::string output_name = nameChars ? nameChars : "";
 	if (vertical) {
 		for (int i = 0; i < verticalCanvasOutputLayout->count(); i++) {
 			auto item = verticalCanvasOutputLayout->itemAt(i);
@@ -826,11 +830,37 @@ void MultistreamDock::LoadOutput(obs_data_t *output_data, bool vertical)
 			outputButtonStyle(streamButton);
 		});
 	} else {
-		connect(streamButton, &QPushButton::clicked, [this, streamButton, output_data] {
+		connect(streamButton, &QPushButton::clicked, [this, streamButton, output_name] {
 			if (streamButton->isChecked()) {
 				blog(LOG_INFO, "[Aitum Multistream] start stream clicked '%s'",
-				     obs_data_get_string(output_data, "name"));
-				if (!StartOutput(output_data, streamButton))
+				     output_name.c_str());
+
+				if (!current_config) {
+					streamButton->setChecked(false);
+					outputButtonStyle(streamButton);
+					return;
+				}
+
+				auto outputs_array = obs_data_get_array(current_config, "outputs");
+				obs_data_t *found_settings = nullptr;
+				size_t count = obs_data_array_count(outputs_array);
+				for (size_t i = 0; i < count; i++) {
+					auto item = obs_data_array_item(outputs_array, i);
+					if (strcmp(obs_data_get_string(item, "name"), output_name.c_str()) == 0) {
+						found_settings = item;
+						break;
+					}
+					obs_data_release(item);
+				}
+				obs_data_array_release(outputs_array);
+
+				bool started = false;
+				if (found_settings) {
+					started = StartOutput(found_settings, streamButton);
+					obs_data_release(found_settings);
+				}
+
+				if (!started)
 					streamButton->setChecked(false);
 			} else {
 				bool stop = true;
@@ -846,8 +876,8 @@ void MultistreamDock::LoadOutput(obs_data_t *output_data, bool vertical)
 				}
 				if (stop) {
 					blog(LOG_INFO, "[Aitum Multistream] stop stream clicked '%s'",
-					     obs_data_get_string(output_data, "name"));
-					const char *name2 = obs_data_get_string(output_data, "name");
+					     output_name.c_str());
+					const char *name2 = output_name.c_str();
 					for (auto it = outputs.begin(); it != outputs.end(); it++) {
 						if (std::get<std::string>(*it) != name2)
 							continue;
@@ -866,19 +896,19 @@ void MultistreamDock::LoadOutput(obs_data_t *output_data, bool vertical)
 		bool startWithMain = obs_data_get_bool(output_data, "start_w_main");
 		bool stopWithMain = obs_data_get_bool(output_data, "stop_w_main");
 		if (startWithMain)
-			ss_connections.push_back(connect(this, &MultistreamDock::requestingStart, [this, output_data, streamButton](bool pend) {
+			ss_connections.push_back(connect(this, &MultistreamDock::requestingStart, [this, output_name](bool pend) {
 				if (!pend) {
 					blog(LOG_INFO, "[Aitum Multistream] automatically starting stream '%s'",
-					     obs_data_get_string(output_data, "name"));
-					StartOutput(output_data, streamButton, true);
+					     output_name.c_str());
+					StartOutputByName(output_name.c_str());
 				}
 			}));
 		if (stopWithMain)
-			ss_connections.push_back(connect(this, &MultistreamDock::requestingStop, [this, output_data, streamButton](bool pend) {
+			ss_connections.push_back(connect(this, &MultistreamDock::requestingStop, [this, output_name](bool pend) {
 				if (pend) {
 					blog(LOG_INFO, "[Aitum Multistream] automatically stopping stream '%s'", // if the corresponding output still exists
-					     obs_data_get_string(output_data, "name"));
-					const char *name2 = obs_data_get_string(output_data, "name");
+					     output_name.c_str());
+					const char *name2 = output_name.c_str();
 					for (auto it = outputs.begin(); it != outputs.end(); it++) {
 						if (std::get<std::string>(*it) != name2)
 							continue;
@@ -1021,12 +1051,14 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 	}
 	obs_encoder_t *venc = nullptr;
 	obs_encoder_t *aenc = nullptr;
+	bool owns_venc = false;
+	bool owns_aenc = false;
 	//auto advanced = obs_data_get_bool(settings, "advanced");
 	auto venc_name = obs_data_get_string(settings, "video_encoder");
 	if (!venc_name || venc_name[0] == '\0') {
 		//use main encoder
 		auto main_output = obs_frontend_get_streaming_output();
-		if (!obs_output_active(main_output)) {
+		if (!main_output || !obs_output_active(main_output)) {
 			obs_output_release(main_output);
 			blog(LOG_WARNING, "[Aitum Multistream] failed to start stream '%s' because main was not started",
 			     obs_data_get_string(settings, "name"));
@@ -1056,7 +1088,10 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 		std::string video_encoder_name = "aitum_multi_video_encoder_";
 		video_encoder_name += name;
 		venc = obs_video_encoder_create(venc_name, video_encoder_name.c_str(), s, nullptr);
+		owns_venc = venc != nullptr;
 		obs_data_release(s);
+		if (!venc)
+			return false;
 		obs_encoder_set_video(venc, obs_get_video());
 		auto divisor = obs_data_get_int(settings, "frame_rate_divisor");
 		if (divisor > 1)
@@ -1073,7 +1108,7 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 	if (!aenc_name || aenc_name[0] == '\0') {
 		//use main encoder
 		auto main_output = obs_frontend_get_streaming_output();
-		if (!obs_output_active(main_output)) {
+		if (!main_output || !obs_output_active(main_output)) {
 			obs_output_release(main_output);
 			blog(LOG_WARNING, "[Aitum Multistream] failed to start stream '%s' because main was not started",
 			     obs_data_get_string(settings, "name"));
@@ -1104,11 +1139,21 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 		audio_encoder_name += name;
 		aenc = obs_audio_encoder_create(aenc_name, audio_encoder_name.c_str(), s,
 						obs_data_get_int(settings, "audio_track"), nullptr);
+		owns_aenc = aenc != nullptr;
 		obs_data_release(s);
+		if (!aenc) {
+			if (owns_venc)
+				obs_encoder_release(venc);
+			return false;
+		}
 		obs_encoder_set_audio(aenc, obs_get_audio());
 	}
 
 	if (!aenc || !venc) {
+		if (owns_aenc)
+			obs_encoder_release(aenc);
+		if (owns_venc)
+			obs_encoder_release(venc);
 		return false;
 	}
 	auto server = obs_data_get_string(settings, "stream_server");
@@ -1138,6 +1183,14 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 	service_name += name;
 	auto service = obs_service_create(whip ? "whip_custom" : "rtmp_custom", service_name.c_str(), s, nullptr);
 	obs_data_release(s);
+	if (!service) {
+		blog(LOG_WARNING, "[Aitum Multistream] failed to create service for stream '%s'", name);
+		if (owns_aenc)
+			obs_encoder_release(aenc);
+		if (owns_venc)
+			obs_encoder_release(venc);
+		return false;
+	}
 
 	const char *type = obs_service_get_preferred_output_type(service);
 	if (!type) {
@@ -1151,6 +1204,16 @@ bool MultistreamDock::StartOutput(obs_data_t *settings, QPushButton *streamButto
 	std::string output_name = "aitum_multi_output_";
 	output_name += name;
 	auto output = obs_output_create(type, output_name.c_str(), nullptr, nullptr);
+	if (!output) {
+		blog(LOG_WARNING, "[Aitum Multistream] failed to create output '%s' of type '%s' for stream '%s'", output_name.c_str(),
+		     type, name);
+		obs_service_release(service);
+		if (owns_aenc)
+			obs_encoder_release(aenc);
+		if (owns_venc)
+			obs_encoder_release(venc);
+		return false;
+	}
 	obs_output_set_service(output, service);
 
 	config_t *config = obs_frontend_get_profile_config();
